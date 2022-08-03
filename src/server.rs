@@ -2,39 +2,67 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     str::from_utf8,
+    sync::mpsc::{self, Sender},
     thread,
 };
 
-fn handle_client(mut stream: TcpStream) -> std::io::Result<()> {
-    let mut buffer = [0; 512];
-    // let mut buffer: Vec<u8> = vec![]; 为什么不可以…… ？
+use crate::consts::MSG_BUF_SIZE;
+
+fn handle_client(mut stream: TcpStream, sender: Sender<String>) -> std::io::Result<()> {
+    // let mut buffer: Vec<u8> = vec![]; 为什么不可以……因为没有指定缓冲大小吗……
+    let mut buffer: Vec<u8> = vec![0; MSG_BUF_SIZE];
+    let client_addr = stream.peer_addr().expect("Failed to get client addr.");
+    println!("Client {} has been online.", client_addr);
     loop {
-        let bytes_read = stream.read(&mut buffer)?;
-        if bytes_read == 0 {
-            return Ok(());
+        if let Ok(msg_size) = stream.read(&mut buffer) {
+            if msg_size > 0 {
+                let msg = from_utf8(&buffer[..msg_size]).unwrap();
+                println!("Client {}: {}", client_addr, msg);
+                sender.send(msg.to_string()).expect("Failed to send msg.");
+                println!("Sent to receiver")
+            }
+        } else {
+            println!("Client {} is offline now.", client_addr);
+            break;
         }
-        // 将接收到的内容发送回去
-        println!("Client: {}", from_utf8(&buffer[..bytes_read]).unwrap());
-        stream.write(&buffer[..bytes_read])?;
     }
+    return Ok(());
 }
 
-pub fn init() -> std::io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:9999")?;
-    let mut threads: Vec<thread::JoinHandle<()>> = vec![];
+pub fn start() -> std::io::Result<()> {
+    // let mut handler_threads: Vec<thread::JoinHandle<()>> = vec![];
+    let mut clients: Vec<TcpStream> = vec![];
 
-    for stream in listener.incoming() {
-        let stream = stream.expect("Failed!");
-        // 创建线程处理流
-        let handle = thread::spawn(move || {
-            handle_client(stream).unwrap_or_else(|error| eprintln!("{:?}", error));
-        });
+    let (msg_sender, msg_receiver) = mpsc::channel::<String>();
+    let (stream_sender, stream_receiver) = mpsc::channel::<TcpStream>();
 
-        threads.push(handle);
+    thread::spawn(move || {
+        let listener = TcpListener::bind("127.0.0.1:9999").expect("Failed to bind.");
+        for stream in listener.incoming() {
+            let stream = stream.expect("Failed to get stream.");
+            let msg_sender_clone = msg_sender.clone();
+            stream_sender
+                .send(stream.try_clone().expect("Failed to clone stream."))
+                .expect("Failed to send stream.");
+            thread::spawn(move || {
+                handle_client(stream, msg_sender_clone).unwrap_or_else(|err| eprintln!("{:?}", err))
+            });
+        }
+    });
+
+    loop {
+        if let Ok(stream) = stream_receiver.try_recv() {
+            println!("Stream pushed.");
+            clients.push(stream);
+        }
+
+        if let Ok(msg) = msg_receiver.try_recv() {
+            println!("Msg received, try to broadcast...");
+            for mut client in &clients {
+                client
+                    .write(msg.as_bytes())
+                    .expect("Failed to send msg to client");
+            }
+        }
     }
-
-    for handle in threads {
-        handle.join().unwrap();
-    }
-    Ok(())
 }

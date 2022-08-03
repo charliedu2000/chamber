@@ -3,6 +3,7 @@ mod server;
 
 mod consts;
 mod message;
+mod utils;
 
 use std::env;
 
@@ -10,9 +11,9 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     if args.contains(&String::from(consts::ARG_CLIENT)) {
         println!("Start client!");
-        client::init();
+        let _res = client::start();
     } else if args.contains(&String::from(consts::ARG_SERVER)) {
         println!("Start server!");
-        server::init();
+        let _res = server::start();
     }
 }
