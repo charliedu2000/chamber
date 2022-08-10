@@ -9,11 +9,7 @@ mod utils;
 mod paragraph_chamber;
 mod reflow_chamber;
 
-use std::{any::type_name, env};
-
-fn type_of<T>(_: T) -> &'static str {
-    type_name::<T>()
-}
+use std::env;
 
 fn main() {
     println!("{}, {}", "一".len(), "一二".len());
