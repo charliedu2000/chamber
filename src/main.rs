@@ -6,6 +6,9 @@ mod consts;
 mod message;
 mod utils;
 
+mod paragraph_chamber;
+mod reflow_chamber;
+
 use std::{any::type_name, env};
 
 fn type_of<T>(_: T) -> &'static str {
