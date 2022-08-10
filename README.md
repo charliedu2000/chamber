@@ -15,6 +15,19 @@
 - [ ] 完善启动时的命令行参数功能；
 - [ ] 命令模式或快捷键菜单，命令/菜单功能待定；
 
+## 待解决的 Bug
+
+借助字符串的 `unicode_width` 来定位 TUI 中光标位置，但是当输入内容有中文等特殊字符时，由于字符所占字节数与显示宽度不相同，移动光标后光标所在的位置与对应字符在字符串中的位置不一定一致，此时修改字符串会导致 `panic`。
+
+```rust
+/// 1二三
+///    ^
+/// 记字符串第一个字符前的位置为0，光标所在位置为 3（一个汉字的宽度是 2）
+/// 而该处字节长度为 4（一个汉字的长度是 3），在这里插入或删除都会出错
+```
+
+
+
 ## 运行
 
 *自己的 Flag 刚立起来，还没打算提供二进制包。*
@@ -28,3 +41,8 @@ cargo run -- server
 cargo run -- client
 ```
 
+## 相关项目
+
+[tui-rs](https://github.com/fdehau/tui-rs)
+
+[tui-rs optional-trim-end](https://github.com/Phoenix-Chen/tui-rs/tree/optional_trim_end)

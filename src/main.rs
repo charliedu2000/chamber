@@ -16,7 +16,7 @@ fn type_of<T>(_: T) -> &'static str {
 }
 
 fn main() {
-    println!("{}", type_of('😀'));
+    println!("{}, {}", "一".len(), "一二".len());
     let args: Vec<String> = env::args().collect();
     if args.contains(&String::from(consts::ARG_CLIENT)) {
         println!("Start client!");
