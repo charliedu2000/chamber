@@ -3,11 +3,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{
-    error::Error,
-    io::{self},
-    str::from_utf8,
-};
+use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
@@ -16,8 +12,14 @@ use tui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use crate::consts::MSG_BUF_SIZE;
-use crate::paragraph_chamber::{Paragraph, Wrap};
+use crate::{
+    consts::MSG_BUF_SIZE,
+    utils::{char_arr_to_string, string_to_char_vec},
+};
+use crate::{
+    paragraph_chamber::{Paragraph, Wrap},
+    utils::char_vec_to_string,
+};
 
 enum InputMode {
     Editing,
@@ -28,7 +30,7 @@ struct App {
     input_mode: InputMode,
     received_messages: Vec<String>,
     input_buffer: String,
-    cursor_offset: usize,
+    cursor_position: usize,
     editor_width: usize,
 }
 impl Default for App {
@@ -37,9 +39,24 @@ impl Default for App {
             input_mode: InputMode::Editing, // 自动进入编辑模式
             received_messages: vec![],
             input_buffer: String::default(),
-            cursor_offset: 0,
+            cursor_position: 0,
             editor_width: 0,
         }
+    }
+}
+impl App {
+    fn len_of_str_before_cursor(&self) -> usize {
+        let string_before_cursor: String =
+            char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
+
+        string_before_cursor.len()
+    }
+
+    fn width_of_str_before_cursor(&self) -> usize {
+        let string_before_cursor: String =
+            char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
+
+        string_before_cursor.width()
     }
 }
 
@@ -84,39 +101,55 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             // should send msg
                             app.received_messages
                                 .push(app.input_buffer.drain(..).collect());
-                            app.cursor_offset = 0;
+                            app.cursor_position = 0;
                         }
                         KeyCode::Char(ch) => {
                             if app.input_buffer.as_bytes().len() < MSG_BUF_SIZE {
-                                // app.input_buffer.push(ch);
-                                app.input_buffer
-                                    .insert(app.input_buffer.len() - app.cursor_offset, ch)
+                                app.input_buffer.insert(app.len_of_str_before_cursor(), ch);
+                                app.cursor_position += 1;
                             }
                         }
                         KeyCode::Backspace => {
-                            // client.input_buffer.pop();
-                            let cursor_position = app.input_buffer.len() - app.cursor_offset;
-                            if cursor_position == app.input_buffer.len() {
-                                app.input_buffer.pop();
-                            } else if cursor_position > 0 {
-                                app.input_buffer.remove(cursor_position - 1);
+                            if app.cursor_position > 0 {
+                                if app.cursor_position == app.input_buffer.chars().count() {
+                                    app.input_buffer.pop();
+                                } else if app.cursor_position > 0 {
+                                    let mut chars_in_buffer: Vec<char> =
+                                        string_to_char_vec(&app.input_buffer);
+                                    chars_in_buffer.remove(app.cursor_position - 1);
+                                    app.input_buffer = char_vec_to_string(&chars_in_buffer);
+                                }
+                                app.cursor_position -= 1;
                             }
                         }
                         KeyCode::Left => {
-                            app.cursor_offset += if app.cursor_offset < app.input_buffer.width() {
-                                1
-                            } else {
-                                0
-                            }
+                            app.cursor_position -= if app.cursor_position > 0 { 1 } else { 0 }
                         }
                         KeyCode::Right => {
-                            app.cursor_offset -= if app.cursor_offset > 0 { 1 } else { 0 };
+                            app.cursor_position +=
+                                if app.cursor_position < app.input_buffer.chars().count() {
+                                    1
+                                } else {
+                                    0
+                                };
                         }
                         KeyCode::Up => {
                             // move cursor up
+                            app.cursor_position -= if app.cursor_position / app.editor_width > 0 {
+                                app.editor_width
+                            } else {
+                                0
+                            };
                         }
                         KeyCode::Down => {
                             // move cursor down
+                            if app.width_of_str_before_cursor() + app.editor_width
+                                < app.input_buffer.width()
+                            {
+                                app.cursor_position += app.editor_width;
+                            } else {
+                                app.cursor_position = app.input_buffer.chars().count();
+                            }
                         }
                         KeyCode::Esc => {
                             // should set input_mode to STOPPED
@@ -169,8 +202,9 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     frame.render_widget(online_clents, chunks[1]);
 
     let editor_title = format!(
-        "Press <Enter> to send, cursor offset: {}, str len: {}",
-        app.cursor_offset,
+        "Press <Enter> to send, cursor position: {}, char num: {}, str len: {}",
+        app.cursor_position,
+        app.input_buffer.chars().count(),
         app.input_buffer.len()
     );
     let editor_block = Block::default()
@@ -185,11 +219,12 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         })
         .block(editor_block);
     app.editor_width = left_chunks[1].width as usize - 2;
-    let msg_width = app.input_buffer.width();
-    // set cursor
+    let msg_split_width: usize =
+        char_arr_to_string(&string_to_char_vec(&app.input_buffer)[0..app.cursor_position]).width();
+
     frame.set_cursor(
-        left_chunks[1].x + ((msg_width - app.cursor_offset) % app.editor_width) as u16 + 1,
-        left_chunks[1].y + ((msg_width - app.cursor_offset) / app.editor_width) as u16 + 1,
+        left_chunks[1].x + (msg_split_width % app.editor_width) as u16 + 1,
+        left_chunks[1].y + (msg_split_width / app.editor_width) as u16 + 1,
     );
     frame.render_widget(msg_in_editor, left_chunks[1]);
 }

@@ -13,6 +13,16 @@ use std::env;
 
 fn main() {
     println!("{}, {}", "一".len(), "一二".len());
+    let s: String = "hello".to_string();
+    let mut arr: Vec<char> = s.chars().collect();
+    println!("{:?}", arr);
+    println!("{:?}", arr.remove(1));
+    println!("{:?}", arr);
+    let str1 = String::from("asd啊");
+    println!("{}", str1.len());
+    let mut temp = String::from("asd啊asd");
+    assert_eq!(temp.remove(3), '啊');
+
     let args: Vec<String> = env::args().collect();
     if args.contains(&String::from(consts::ARG_CLIENT)) {
         println!("Start client!");
