@@ -10,7 +10,7 @@ use tui::{
     widgets::{Block, Borders},
     Frame, Terminal,
 };
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     consts::MSG_BUF_SIZE,
@@ -45,6 +45,7 @@ impl Default for App {
     }
 }
 impl App {
+    /// get `len()` of the string before your cursor
     fn len_of_str_before_cursor(&self) -> usize {
         let string_before_cursor: String =
             char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
@@ -52,11 +53,30 @@ impl App {
         string_before_cursor.len()
     }
 
+    /// get unicode width of the string before your cursor
     fn width_of_str_before_cursor(&self) -> usize {
         let string_before_cursor: String =
             char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
 
         string_before_cursor.width()
+    }
+
+    /// get actually occupied width of the string before your cursor
+    fn width_occupied_by_str_before_cursor(&self) -> usize {
+        let char_arr_before_cursor =
+            &string_to_char_vec(&self.input_buffer)[0..self.cursor_position];
+
+        let mut width: usize = 0;
+        for ch in char_arr_before_cursor {
+            let ch_width = ch.width().unwrap_or_default();
+            let mut additional_width = (width + ch_width) % self.editor_width;
+            if width + ch_width <= self.editor_width || additional_width >= ch_width {
+                additional_width = 0;
+            }
+            width += ch_width + additional_width;
+        }
+
+        width
     }
 }
 
@@ -135,21 +155,67 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         }
                         KeyCode::Up => {
                             // move cursor up
-                            app.cursor_position -= if app.cursor_position / app.editor_width > 0 {
-                                app.editor_width
-                            } else {
-                                0
-                            };
+                            let str_width_before_cursor = app.width_of_str_before_cursor();
+                            let chars_before_cursor =
+                                &mut string_to_char_vec(&app.input_buffer)[0..app.cursor_position];
+                            let mut width_to_move: usize = 0;
+                            let mut steps_to_move: usize = 0;
+                            chars_before_cursor.reverse();
+                            if app.cursor_position > 0 {
+                                for ch in chars_before_cursor {
+                                    let ch_width = ch.width().unwrap_or_default();
+                                    // calculate width wasted by char which is wider than 1 and should be at end of line
+                                    let additional_width = if (str_width_before_cursor
+                                        - width_to_move)
+                                        % app.editor_width
+                                        < ch_width
+                                    {
+                                        (str_width_before_cursor - width_to_move) % app.editor_width
+                                    } else {
+                                        0
+                                    };
+                                    if width_to_move < app.editor_width {
+                                        width_to_move +=
+                                            ch.width().unwrap_or_default() + additional_width;
+                                        steps_to_move += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                            app.cursor_position -= steps_to_move;
                         }
                         KeyCode::Down => {
                             // move cursor down
-                            if app.width_of_str_before_cursor() + app.editor_width
-                                < app.input_buffer.width()
-                            {
-                                app.cursor_position += app.editor_width;
-                            } else {
-                                app.cursor_position = app.input_buffer.chars().count();
+                            let width_occupied = app.width_occupied_by_str_before_cursor();
+                            let chars_in_buf = string_to_char_vec(&app.input_buffer);
+                            let mut width_to_move: usize = 0;
+                            let mut steps_to_move: usize = 0;
+                            if app.cursor_position < app.input_buffer.chars().count() {
+                                for ch in &chars_in_buf
+                                    [app.cursor_position..app.input_buffer.chars().count()]
+                                {
+                                    let ch_width = ch.width().unwrap_or_default();
+                                    // calculate width wasted by char which is wider than 1 and should be at end of line
+                                    let additional_width =
+                                        if (width_to_move + ch_width + width_occupied)
+                                            % app.editor_width
+                                            < ch_width
+                                        {
+                                            (width_to_move + ch_width + width_occupied)
+                                                % app.editor_width
+                                        } else {
+                                            0
+                                        };
+                                    if width_to_move < app.editor_width {
+                                        width_to_move += ch_width + additional_width;
+                                        steps_to_move += 1;
+                                    } else {
+                                        break;
+                                    }
+                                }
                             }
+                            app.cursor_position += steps_to_move;
                         }
                         KeyCode::Esc => {
                             // should set input_mode to STOPPED
@@ -190,7 +256,7 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     )
     .wrap(Wrap {
         trim: true,
-        break_words: true,
+        break_words: false,
     })
     .block(msg_block);
     frame.render_widget(last_msg_received, left_chunks[0]);
@@ -215,12 +281,12 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let msg_in_editor = Paragraph::new(app.input_buffer.as_ref())
         .wrap(Wrap {
             trim: false,
-            break_words: false,
+            break_words: true,
         })
         .block(editor_block);
     app.editor_width = left_chunks[1].width as usize - 2;
-    let msg_split_width: usize =
-        char_arr_to_string(&string_to_char_vec(&app.input_buffer)[0..app.cursor_position]).width();
+    let msg_split_width: usize = app.width_occupied_by_str_before_cursor();
+    //    char_arr_to_string(&string_to_char_vec(&app.input_buffer)[0..app.cursor_position]).width();
 
     frame.set_cursor(
         left_chunks[1].x + (msg_split_width % app.editor_width) as u16 + 1,

@@ -93,7 +93,7 @@ impl<'a, 'b> LineComposer<'a> for WordWrapper<'a, 'b> {
             if current_line_width > self.max_line_width {
                 // If there was no word break in the text, wrap at the end of the line.
                 let (truncate_at, truncated_width) =
-                    if symbols_to_last_word_end != 0 && self.break_words {
+                    if symbols_to_last_word_end != 0 && !self.break_words {
                         (symbols_to_last_word_end, width_to_last_word_end)
                     } else {
                         (self.current_line.len() - 1, self.max_line_width)
