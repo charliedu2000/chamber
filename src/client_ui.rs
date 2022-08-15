@@ -7,7 +7,8 @@ use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
-    widgets::{Block, Borders},
+    text::Spans,
+    widgets::{Block, Borders, List, ListItem},
     Frame, Terminal,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -78,6 +79,76 @@ impl App {
 
         width
     }
+
+    /// remove a char just before the cursor
+    fn remove_a_char_before_cursor(&mut self) {
+        if self.cursor_position > 0 {
+            if self.cursor_position == self.input_buffer.chars().count() {
+                self.input_buffer.pop();
+            } else if self.cursor_position > 0 {
+                let mut chars_in_buffer: Vec<char> = string_to_char_vec(&self.input_buffer);
+                chars_in_buffer.remove(self.cursor_position - 1);
+                self.input_buffer = char_vec_to_string(&chars_in_buffer);
+            }
+            self.cursor_position -= 1;
+        }
+    }
+
+    /// move cursor to the line above
+    fn move_cursor_up(&mut self) {
+        let str_width_before_cursor = self.width_of_str_before_cursor();
+        let chars_before_cursor =
+            &mut string_to_char_vec(&self.input_buffer)[0..self.cursor_position];
+        let mut width_to_move: usize = 0;
+        let mut steps_to_move: usize = 0;
+        chars_before_cursor.reverse();
+        if self.cursor_position > 0 {
+            for ch in chars_before_cursor {
+                let ch_width = ch.width().unwrap_or_default();
+                // calculate width wasted by char which is wider than 1 and should be at end of line
+                let additional_width =
+                    if (str_width_before_cursor - width_to_move) % self.editor_width < ch_width {
+                        (str_width_before_cursor - width_to_move) % self.editor_width
+                    } else {
+                        0
+                    };
+                if width_to_move < self.editor_width {
+                    width_to_move += ch_width + additional_width;
+                    steps_to_move += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        self.cursor_position -= steps_to_move;
+    }
+
+    /// move cursor to the line below
+    fn move_cursor_down(&mut self) {
+        let width_occupied = self.width_occupied_by_str_before_cursor();
+        let chars_in_buf = string_to_char_vec(&self.input_buffer);
+        let mut width_to_move: usize = 0;
+        let mut steps_to_move: usize = 0;
+        if self.cursor_position < self.input_buffer.chars().count() {
+            for ch in &chars_in_buf[self.cursor_position..self.input_buffer.chars().count()] {
+                let ch_width = ch.width().unwrap_or_default();
+                // calculate width wasted by char which is wider than 1 and should be at end of line
+                let additional_width =
+                    if (width_to_move + ch_width + width_occupied) % self.editor_width < ch_width {
+                        (width_to_move + ch_width + width_occupied) % self.editor_width
+                    } else {
+                        0
+                    };
+                if width_to_move < self.editor_width {
+                    width_to_move += ch_width + additional_width;
+                    steps_to_move += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        self.cursor_position += steps_to_move;
+    }
 }
 
 pub fn ui_init() -> Result<(), Box<dyn Error>> {
@@ -130,17 +201,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             }
                         }
                         KeyCode::Backspace => {
-                            if app.cursor_position > 0 {
-                                if app.cursor_position == app.input_buffer.chars().count() {
-                                    app.input_buffer.pop();
-                                } else if app.cursor_position > 0 {
-                                    let mut chars_in_buffer: Vec<char> =
-                                        string_to_char_vec(&app.input_buffer);
-                                    chars_in_buffer.remove(app.cursor_position - 1);
-                                    app.input_buffer = char_vec_to_string(&chars_in_buffer);
-                                }
-                                app.cursor_position -= 1;
-                            }
+                            app.remove_a_char_before_cursor();
                         }
                         KeyCode::Left => {
                             app.cursor_position -= if app.cursor_position > 0 { 1 } else { 0 }
@@ -154,72 +215,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                 };
                         }
                         KeyCode::Up => {
-                            // move cursor up
-                            let str_width_before_cursor = app.width_of_str_before_cursor();
-                            let chars_before_cursor =
-                                &mut string_to_char_vec(&app.input_buffer)[0..app.cursor_position];
-                            let mut width_to_move: usize = 0;
-                            let mut steps_to_move: usize = 0;
-                            chars_before_cursor.reverse();
-                            if app.cursor_position > 0 {
-                                for ch in chars_before_cursor {
-                                    let ch_width = ch.width().unwrap_or_default();
-                                    // calculate width wasted by char which is wider than 1 and should be at end of line
-                                    let additional_width = if (str_width_before_cursor
-                                        - width_to_move)
-                                        % app.editor_width
-                                        < ch_width
-                                    {
-                                        (str_width_before_cursor - width_to_move) % app.editor_width
-                                    } else {
-                                        0
-                                    };
-                                    if width_to_move < app.editor_width {
-                                        width_to_move +=
-                                            ch.width().unwrap_or_default() + additional_width;
-                                        steps_to_move += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            }
-                            app.cursor_position -= steps_to_move;
+                            app.move_cursor_up();
                         }
                         KeyCode::Down => {
-                            // move cursor down
-                            let width_occupied = app.width_occupied_by_str_before_cursor();
-                            let chars_in_buf = string_to_char_vec(&app.input_buffer);
-                            let mut width_to_move: usize = 0;
-                            let mut steps_to_move: usize = 0;
-                            if app.cursor_position < app.input_buffer.chars().count() {
-                                for ch in &chars_in_buf
-                                    [app.cursor_position..app.input_buffer.chars().count()]
-                                {
-                                    let ch_width = ch.width().unwrap_or_default();
-                                    // calculate width wasted by char which is wider than 1 and should be at end of line
-                                    let additional_width =
-                                        if (width_to_move + ch_width + width_occupied)
-                                            % app.editor_width
-                                            < ch_width
-                                        {
-                                            (width_to_move + ch_width + width_occupied)
-                                                % app.editor_width
-                                        } else {
-                                            0
-                                        };
-                                    if width_to_move < app.editor_width {
-                                        width_to_move += ch_width + additional_width;
-                                        steps_to_move += 1;
-                                    } else {
-                                        break;
-                                    }
-                                }
-                            }
-                            app.cursor_position += steps_to_move;
+                            app.move_cursor_down();
                         }
                         KeyCode::Esc => {
                             // should set input_mode to STOPPED
-                            // client.input_mode = InputMode::Stopped;
+                            // app.input_mode = InputMode::Stopped;
                             return Ok(());
                         }
                         _ => {}
@@ -248,18 +251,32 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .borders(Borders::ALL)
         .title("Chamber Message Window")
         .title_alignment(Alignment::Left);
-    let last_msg_received = Paragraph::new::<String>(
-        app.received_messages
-            .last()
-            .unwrap_or(&"".to_string())
-            .clone(),
-    )
-    .wrap(Wrap {
-        trim: true,
-        break_words: false,
-    })
-    .block(msg_block);
-    frame.render_widget(last_msg_received, left_chunks[0]);
+    // let last_msg_received = Paragraph::new::<String>(
+    //     app.received_messages
+    //         .last()
+    //         .unwrap_or(&"".to_string())
+    //         .clone(),
+    // )
+    // .wrap(Wrap {
+    //     trim: true,
+    //     break_words: false,
+    // })
+    // .block(msg_block);
+    let msgs_received: Vec<Spans> = app
+        .received_messages
+        .iter()
+        .map(|i| {
+            // ListItem::new::<String>(i.into())
+            Spans::from(i.as_ref())
+        })
+        .collect();
+    let msg_para = Paragraph::new(msgs_received)
+        .wrap(Wrap {
+            trim: false,
+            break_words: false,
+        })
+        .block(msg_block);
+    frame.render_widget(msg_para, left_chunks[0]);
 
     let online_clents = Block::default()
         .borders(Borders::ALL)
