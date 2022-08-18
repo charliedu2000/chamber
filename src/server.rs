@@ -30,12 +30,12 @@ fn handle_client(mut stream: TcpStream, sender: Sender<String>) -> std::io::Resu
 }
 
 pub fn start() -> std::io::Result<()> {
-    // let mut handler_threads: Vec<thread::JoinHandle<()>> = vec![];
     let mut clients: Vec<TcpStream> = vec![];
 
     let (msg_sender, msg_receiver) = mpsc::channel::<String>();
     let (stream_sender, stream_receiver) = mpsc::channel::<TcpStream>();
 
+    // a thread to get connections
     thread::spawn(move || {
         let listener = TcpListener::bind("127.0.0.1:9999").expect("Failed to bind.");
         for stream in listener.incoming() {
@@ -44,6 +44,7 @@ pub fn start() -> std::io::Result<()> {
             stream_sender
                 .send(stream.try_clone().expect("Failed to clone stream."))
                 .expect("Failed to send stream.");
+            // create a new thread to handle a connection
             thread::spawn(move || {
                 handle_client(stream, msg_sender_clone).unwrap_or_else(|err| eprintln!("{:?}", err))
             });
@@ -58,6 +59,7 @@ pub fn start() -> std::io::Result<()> {
 
         if let Ok(msg) = msg_receiver.try_recv() {
             println!("Msg received, try to broadcast...");
+            // if client has been offline, server will panic
             for mut client in &clients {
                 client
                     .write(msg.as_bytes())
