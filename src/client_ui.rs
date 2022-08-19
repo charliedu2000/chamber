@@ -16,13 +16,14 @@ use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
     text::Spans,
-    widgets::{Block, Borders, List, ListItem},
+    widgets::{Block, Borders},
     Frame, Terminal,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     consts::MSG_BUF_SIZE,
+    message::{Message, MessageType},
     utils::{char_arr_to_string, string_to_char_vec},
 };
 use crate::{
@@ -37,7 +38,7 @@ enum InputMode {
 
 struct App {
     input_mode: InputMode,
-    received_messages: Vec<String>,
+    received_messages: Vec<Message>,
     input_buffer: String,
     cursor_position: usize,
     editor_width: usize,
@@ -159,6 +160,29 @@ impl App {
         }
         self.cursor_position += steps_to_move;
     }
+
+    fn send_msg(&mut self) -> std::io::Result<()> {
+        // should send msg
+        let msg_content: String = self.input_buffer.drain(..).collect();
+        let msg = Message {
+            msg_type: MessageType::TextMessage,
+            sender_name: self
+                .stream
+                .as_ref()
+                .unwrap()
+                .local_addr()
+                .expect("Failed to get local addr.")
+                .to_string(),
+            msg_content,
+        };
+        self.stream
+            .as_ref()
+            .unwrap()
+            .write(msg.to_string().as_bytes())?;
+        self.cursor_position = 0;
+
+        Ok(())
+    }
 }
 
 pub fn ui_init() -> Result<(), Box<dyn Error>> {
@@ -194,22 +218,20 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
     let mut stream_clone = stream.try_clone()?;
     app.stream = Some(stream);
 
-    let (msg_sender, msg_receiver) = mpsc::channel::<String>();
+    let (msg_sender, msg_receiver) = mpsc::channel::<Message>();
 
     thread::spawn(move || {
         let mut buffer: Vec<u8> = vec![0; MSG_BUF_SIZE];
         loop {
             if let Ok(msg_size) = stream_clone.read(&mut buffer) {
                 if msg_size > 0 {
+                    let msg = Message::convert_to_msg(from_utf8(&buffer[..msg_size]).unwrap());
                     msg_sender
-                        .send(
-                            from_utf8(&buffer[..msg_size])
-                                .expect("Failed to convert bytes to string.")
-                                .to_string(),
-                        )
+                        .send(msg)
                         .expect("Failed to send msg to msg_receiver.");
                 }
             } else {
+                // should try re-connect, or just quit
                 println!("Server is offline now.");
                 break;
             }
@@ -229,10 +251,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     InputMode::Editing => {
                         match key.code {
                             KeyCode::Enter => {
-                                // should send msg
-                                let msg: String = app.input_buffer.drain(..).collect();
-                                app.stream.as_ref().unwrap().write(msg.as_bytes())?;
-                                app.cursor_position = 0;
+                                app.send_msg().expect("Failed to send msg with app.");
                             }
                             KeyCode::Char(ch) => {
                                 if app.input_buffer.as_bytes().len() < MSG_BUF_SIZE {
@@ -299,7 +318,7 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let msgs_spans: Vec<Spans> = app
         .received_messages
         .iter()
-        .map(|i| Spans::from(i.as_ref()))
+        .map(|i| Spans::from(format!("{}: {}", i.sender_name, i.msg_content)))
         .collect();
     let msg_para = Paragraph::new(msgs_spans)
         .wrap(Wrap {
@@ -318,7 +337,7 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
 
     // editor is a block to input msgs
     let editor_title = format!(
-        "Press <Enter> to send, cursor position: {}, char num: {}, str len: {}",
+        "Press <Enter> to send, cursor position: {}, char num: {}, bytes: {}",
         app.cursor_position,
         app.input_buffer.chars().count(),
         app.input_buffer.len()
