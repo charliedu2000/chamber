@@ -19,6 +19,14 @@ impl Display for MessageType {
     }
 }
 impl MessageType {
+    /// convert a string to `MessageType`
+    /// ```rust
+    /// "ClientLogin"
+    /// ```
+    /// --->
+    /// ```rust
+    /// MessageType::ClientLogIn
+    /// ```
     pub fn convert_to_msg_type(msg_type_str: &str) -> MessageType {
         match msg_type_str {
             "ClientLogin" => MessageType::ClientLogIn,
@@ -47,6 +55,18 @@ impl Display for Message {
     }
 }
 impl Message {
+    /// convert a formatted string to `Message`
+    /// ```rust
+    /// "AMsgType,name_or_id,xxxxx"
+    /// ```
+    /// --->
+    /// ```rust
+    /// Message {
+    ///     msg_type: MessageType::AMsgType,
+    ///     sender_name: name_or_id,
+    ///     msg_content: xxxxx,
+    /// }
+    /// ```
     pub fn convert_to_msg(msg_str: &str) -> Message {
         let msg_info: Vec<&str> = msg_str.split(',').collect();
         if msg_info.len() < 3 {

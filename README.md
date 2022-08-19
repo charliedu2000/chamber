@@ -30,7 +30,7 @@
 cargo run -- server
 # local client
 cargo run -- client
-# TUI demo
+# local client with TUI
 cargo run -- ui
 ```
 

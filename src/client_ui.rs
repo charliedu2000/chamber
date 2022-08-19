@@ -47,7 +47,7 @@ struct App {
 impl Default for App {
     fn default() -> App {
         App {
-            input_mode: InputMode::Editing, // 自动进入编辑模式
+            input_mode: InputMode::Editing, // default mode
             received_messages: vec![],
             input_buffer: String::default(),
             cursor_position: 0,
@@ -57,7 +57,9 @@ impl Default for App {
     }
 }
 impl App {
-    /// get `len()` of the string before your cursor
+    /// Get `len()` of the string before your cursor.
+    /// For example, string `"啊a"` is before your cursor,
+    /// the function will return `4`
     fn len_of_str_before_cursor(&self) -> usize {
         let string_before_cursor: String =
             char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
@@ -65,7 +67,9 @@ impl App {
         string_before_cursor.len()
     }
 
-    /// get unicode width of the string before your cursor
+    /// Get unicode width of the string before your cursor.
+    /// For example, string `"啊a"` is before your cursor,
+    /// the function will return `3`
     fn width_of_str_before_cursor(&self) -> usize {
         let string_before_cursor: String =
             char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
@@ -73,7 +77,16 @@ impl App {
         string_before_cursor.width()
     }
 
-    /// get actually occupied width of the string before your cursor
+    /// Get actually occupied width of the string before your cursor.
+    /// For example, in such a block, width for string is `10`:
+    /// ```shell
+    /// ┌──────────┐
+    /// │123456789 │
+    /// │十        │
+    /// └──────────┘
+    /// ```
+    /// The width of string `"123456789十"` shoud be `11`,
+    /// but actually occupied width will be `12`
     fn width_occupied_by_str_before_cursor(&self) -> usize {
         let char_arr_before_cursor =
             &string_to_char_vec(&self.input_buffer)[0..self.cursor_position];
@@ -161,8 +174,8 @@ impl App {
         self.cursor_position += steps_to_move;
     }
 
+    /// send msg in `input_buffer` to server
     fn send_msg(&mut self) -> std::io::Result<()> {
-        // should send msg
         let msg_content: String = self.input_buffer.drain(..).collect();
         let msg = Message {
             msg_type: MessageType::TextMessage,
@@ -214,12 +227,14 @@ pub fn ui_init() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
+    // connect to server
     let stream = TcpStream::connect("127.0.0.1:9999")?;
     let mut stream_clone = stream.try_clone()?;
     app.stream = Some(stream);
 
     let (msg_sender, msg_receiver) = mpsc::channel::<Message>();
 
+    // create a thread to read msg from server
     thread::spawn(move || {
         let mut buffer: Vec<u8> = vec![0; MSG_BUF_SIZE];
         loop {
@@ -232,7 +247,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                 }
             } else {
                 // should try re-connect, or just quit
-                println!("Server is offline now.");
+                let msg = Message {
+                    msg_type: MessageType::Error,
+                    sender_name: "localhost".to_string(),
+                    msg_content: "Lost connection.".to_string(),
+                };
+                msg_sender
+                    .send(msg)
+                    .expect("Failed to send msg to msg_receiver.");
                 break;
             }
         }
@@ -352,7 +374,7 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
             break_words: true,
         })
         .block(editor_block);
-    // update width if editor block
+    // update width of editor block
     app.editor_width = left_chunks[1].width as usize - 2;
     // get actually occupied width by msg in editor
     let msg_split_width: usize = app.width_occupied_by_str_before_cursor();

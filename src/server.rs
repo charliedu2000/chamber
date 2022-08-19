@@ -102,7 +102,7 @@ pub fn start() -> std::io::Result<()> {
 
         if let Ok(msg) = msg_receiver.try_recv() {
             println!("Msg received, handle it...");
-            // if client has been offline, server will panic
+            // handle msg
             match msg.msg_type {
                 crate::message::MessageType::ClientLogIn => {}
                 crate::message::MessageType::ClientExit => {
