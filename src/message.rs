@@ -55,7 +55,7 @@ impl Display for Message {
     }
 }
 impl Message {
-    /// convert a formatted string to `Message`
+    /// Convert a formatted string to `Message`
     /// ```rust
     /// "AMsgType,name_or_id,xxxxx"
     /// ```
@@ -82,5 +82,11 @@ impl Message {
                 msg_content: msg_info[2..].join(","),
             }
         }
+    }
+
+    /// Convert a `Message` to a `String` that just contains
+    /// basic infomation of the message
+    pub fn to_brief_string(&self) -> String {
+        format!("{}: {}", self.sender_name, self.msg_content)
     }
 }

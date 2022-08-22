@@ -15,6 +15,7 @@ use std::{
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
+    style::{Color, Style},
     text::Spans,
     widgets::{Block, Borders},
     Frame, Terminal,
@@ -31,13 +32,14 @@ use crate::{
     utils::char_vec_to_string,
 };
 
-enum InputMode {
-    Editing,
-    Stopped,
+enum AppFocus {
+    Editor,
+    MsgList,
+    ClientList,
 }
 
 struct App {
-    input_mode: InputMode,
+    focus: AppFocus,
     received_messages: Vec<Message>,
     input_buffer: String,
     cursor_position: usize,
@@ -47,7 +49,7 @@ struct App {
 impl Default for App {
     fn default() -> App {
         App {
-            input_mode: InputMode::Editing, // default mode
+            focus: AppFocus::Editor, // default mode
             received_messages: vec![],
             input_buffer: String::default(),
             cursor_position: 0,
@@ -58,8 +60,9 @@ impl Default for App {
 }
 impl App {
     /// Get `len()` of the string before your cursor.
+    ///
     /// For example, string `"啊a"` is before your cursor,
-    /// the function will return `4`
+    /// the function will return `4`.
     fn len_of_str_before_cursor(&self) -> usize {
         let string_before_cursor: String =
             char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
@@ -68,8 +71,9 @@ impl App {
     }
 
     /// Get unicode width of the string before your cursor.
+    ///
     /// For example, string `"啊a"` is before your cursor,
-    /// the function will return `3`
+    /// the function will return `3`.
     fn width_of_str_before_cursor(&self) -> usize {
         let string_before_cursor: String =
             char_arr_to_string(&string_to_char_vec(&self.input_buffer)[0..self.cursor_position]);
@@ -78,6 +82,7 @@ impl App {
     }
 
     /// Get actually occupied width of the string before your cursor.
+    ///
     /// For example, in such a block, width for string is `10`:
     /// ```shell
     /// ┌──────────┐
@@ -86,7 +91,7 @@ impl App {
     /// └──────────┘
     /// ```
     /// The width of string `"123456789十"` shoud be `11`,
-    /// but actually occupied width will be `12`
+    /// but actually occupied width will be `12`.
     fn width_occupied_by_str_before_cursor(&self) -> usize {
         let char_arr_before_cursor =
             &string_to_char_vec(&self.input_buffer)[0..self.cursor_position];
@@ -102,6 +107,29 @@ impl App {
         }
 
         width
+    }
+
+    /// Get number of actually occupied lines by the msgs received.
+    fn lines_occupied_by_msg_received(&self) -> usize {
+        let mut lines: usize = 0;
+        for msg in &self.received_messages {
+            let msg_str = msg.to_brief_string();
+            let mut occupied_width = 0;
+            for ch in msg_str.chars() {
+                let ch_width = ch.width().unwrap_or_default();
+                let additional_width = (occupied_width + ch_width) % self.editor_width;
+                if occupied_width + ch_width < self.editor_width {
+                    occupied_width += ch_width;
+                } else {
+                    occupied_width = additional_width;
+                    lines += 1;
+                }
+            }
+            if occupied_width > 0 {
+                lines += 1;
+            }
+        }
+        lines
     }
 
     /// remove a char just before the cursor
@@ -269,13 +297,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
         // check events 10 times every second
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                match app.input_mode {
-                    InputMode::Editing => {
+                match app.focus {
+                    AppFocus::Editor => {
                         match key.code {
                             KeyCode::Enter => {
                                 app.send_msg().expect("Failed to send msg with app.");
                             }
                             KeyCode::Char(ch) => {
+                                // length of msg should be shorter
+                                // for there are msg type and sender in Message
                                 if app.input_buffer.as_bytes().len() < MSG_BUF_SIZE {
                                     app.input_buffer.insert(app.len_of_str_before_cursor(), ch);
                                     app.cursor_position += 1;
@@ -309,7 +339,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             _ => {}
                         }
                     }
-                    InputMode::Stopped => {}
+                    AppFocus::MsgList => match key.code {
+                        KeyCode::Up => {}
+                        KeyCode::Down => {}
+                        _ => {}
+                    },
+                    AppFocus::ClientList => match key.code {
+                        KeyCode::Up => {}
+                        KeyCode::Down => {}
+                        _ => {}
+                    },
                 }
             }
         }
@@ -340,14 +379,21 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let msgs_spans: Vec<Spans> = app
         .received_messages
         .iter()
-        .map(|i| Spans::from(format!("{}: {}", i.sender_name, i.msg_content)))
+        .map(|i| Spans::from(i.to_brief_string()))
         .collect();
+    // scroll to display the newest msg
+    let offset_y = if app.lines_occupied_by_msg_received() as u16 <= left_chunks[0].height - 2 {
+        0
+    } else {
+        app.lines_occupied_by_msg_received() as u16 - (left_chunks[0].height - 2)
+    };
     let msg_para = Paragraph::new(msgs_spans)
         .wrap(Wrap {
             trim: false,
             break_words: false,
         })
-        .block(msg_block);
+        .block(msg_block)
+        .scroll((offset_y, 0));
     frame.render_widget(msg_para, left_chunks[0]);
 
     // should display online clients
@@ -367,7 +413,11 @@ fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let editor_block = Block::default()
         .borders(Borders::ALL)
         .title(editor_title)
-        .title_alignment(Alignment::Left);
+        .title_alignment(Alignment::Left)
+        .style(match app.focus {
+            AppFocus::Editor => Style::default().fg(Color::Green),
+            _ => Style::default(),
+        });
     let msg_in_editor = Paragraph::new(app.input_buffer.as_ref())
         .wrap(Wrap {
             trim: false,
