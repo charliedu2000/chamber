@@ -19,7 +19,7 @@ impl Display for MessageType {
     }
 }
 impl MessageType {
-    /// convert a string to `MessageType`
+    /// Convert string to `MessageType`
     /// ```rust
     /// "ClientLogin"
     /// ```
@@ -40,14 +40,14 @@ impl MessageType {
 
 pub struct Message {
     pub msg_type: MessageType,
-    pub sender_name: String,
+    pub msg_sender: String,
     pub msg_content: String,
 }
 impl Display for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg_str = [
             self.msg_type.to_string(),
-            self.sender_name.clone(),
+            self.msg_sender.clone(),
             self.msg_content.clone(),
         ]
         .join(",");
@@ -72,13 +72,13 @@ impl Message {
         if msg_info.len() < 3 {
             Message {
                 msg_type: MessageType::Error,
-                sender_name: msg_info[1].to_string(),
+                msg_sender: msg_info[1].to_string(),
                 msg_content: "Msg format error.".to_string(),
             }
         } else {
             Message {
                 msg_type: MessageType::convert_to_msg_type(msg_info[0]),
-                sender_name: msg_info[1].to_string(),
+                msg_sender: msg_info[1].to_string(),
                 msg_content: msg_info[2..].join(","),
             }
         }
@@ -87,6 +87,6 @@ impl Message {
     /// Convert a `Message` to a `String` that just contains
     /// basic infomation of the message
     pub fn to_brief_string(&self) -> String {
-        format!("{}: {}", self.sender_name, self.msg_content)
+        format!("{}: {}", self.msg_sender, self.msg_content)
     }
 }

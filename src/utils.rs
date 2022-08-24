@@ -1,5 +1,6 @@
 use std::thread;
 
+/// Let the current thread sleep for 100 milliseconds.
 pub fn sleep_100_millis() {
     thread::sleep(std::time::Duration::from_millis(100));
 }

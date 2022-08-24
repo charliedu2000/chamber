@@ -207,7 +207,7 @@ impl App {
         let msg_content: String = self.input_buffer.drain(..).collect();
         let msg = Message {
             msg_type: MessageType::TextMessage,
-            sender_name: self
+            msg_sender: self
                 .stream
                 .as_ref()
                 .unwrap()
@@ -274,10 +274,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         .expect("Failed to send msg to msg_receiver.");
                 }
             } else {
-                // should try re-connect, or just quit
+                // should try to re-connect, or just quit
                 let msg = Message {
                     msg_type: MessageType::Error,
-                    sender_name: "localhost".to_string(),
+                    msg_sender: "localhost".to_string(),
                     msg_content: "Lost connection.".to_string(),
                 };
                 msg_sender
@@ -291,7 +291,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
         terminal.draw(|frame| ui(frame, &mut app))?;
 
         if let Ok(msg) = msg_receiver.try_recv() {
-            app.received_messages.push(msg);
+            match msg.msg_type {
+                MessageType::ClientListUpdate => {}
+                MessageType::TextMessage => {
+                    app.received_messages.push(msg);
+                }
+                MessageType::Error => {}
+                _ => {}
+            }
         }
 
         // check events 10 times every second

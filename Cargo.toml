@@ -11,4 +11,4 @@ crossterm = "0.23"
 unicode-width = "0.1"
 unicode-segmentation = "1.2"
 
-banner-na = { git = "https://github.com/riko-teki/banner-na.git" }
+figlet-rs = "0.1.3"

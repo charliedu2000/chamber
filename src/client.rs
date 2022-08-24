@@ -17,9 +17,12 @@ pub fn start() -> std::io::Result<()> {
     // create a new thread to receive msg from server
     thread::spawn(move || {
         let mut buffer: Vec<u8> = vec![0; MSG_BUF_SIZE];
+        // let mut buffer = String::default();
         loop {
             if let Ok(msg_size) = stream_clone.read(&mut buffer) {
+                // if let Ok(msg_size) = stream_clone.read_to_string(&mut buffer) {
                 if msg_size > 0 {
+                    // let msg = Message::convert_to_msg(&buffer);
                     let msg = Message::convert_to_msg(from_utf8(&buffer[..msg_size]).unwrap());
                     println!("Server broadcast: {}", msg)
                 }
@@ -39,7 +42,7 @@ pub fn start() -> std::io::Result<()> {
         println!("Msg size: {} bytes.", msg_bytes.len());
         let msg = Message {
             msg_type: MessageType::TextMessage,
-            sender_name: "local client: ".to_owned() + &stream.local_addr().unwrap().to_string(),
+            msg_sender: "local client: ".to_owned() + &stream.local_addr().unwrap().to_string(),
             msg_content: from_utf8(msg_bytes).unwrap_or_default().to_string(),
         };
         stream
