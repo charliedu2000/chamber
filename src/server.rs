@@ -26,7 +26,7 @@ impl Clone for WrappedStream {
     }
 }
 
-/// receiver 只能被一个线程所拥有，stream 接收到消息之后，广播交给 server……
+/// receiver 只能被一个线程所拥有，stream 接收到消息之后，广播交给 server 来进行……
 ///
 /// 但是在 server 线程中更新客户端列表时会不会略繁琐……
 fn handle_client(mut client: WrappedStream, sender: Sender<Message>) -> std::io::Result<()> {
@@ -113,11 +113,15 @@ pub fn start() -> std::io::Result<()> {
                     // send updated client list to all clients
                 }
                 crate::message::MessageType::ClientExit => {
-                    clients.remove(
-                        &msg.msg_sender
-                            .parse::<u32>()
-                            .expect("Failed to get id to remove."),
-                    );
+                    let index = msg
+                        .msg_sender
+                        .parse::<u32>()
+                        .expect("Failed to get index of exited client.");
+                    clients
+                        .get(&index)
+                        .expect("Failed to get exited client.")
+                        .shutdown(std::net::Shutdown::Both)?;
+                    clients.remove(&index);
                     println!("{}", msg);
                 }
                 crate::message::MessageType::TextMessage => {

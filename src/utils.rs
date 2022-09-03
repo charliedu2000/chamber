@@ -19,3 +19,8 @@ pub fn char_vec_to_string(char_vec: &Vec<char>) -> String {
 pub fn char_arr_to_string(char_vec: &[char]) -> String {
     char_vec.iter().collect::<String>()
 }
+
+// pub struct Config {}
+// impl Config {
+//     pub fn load_config
+// }

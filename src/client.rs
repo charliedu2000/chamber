@@ -28,6 +28,9 @@ pub fn start() -> std::io::Result<()> {
                 }
             } else {
                 println!("Server is offline now.");
+                stream_clone
+                    .shutdown(std::net::Shutdown::Both)
+                    .expect("Failed to shutdown stream.");
                 break;
             }
         }

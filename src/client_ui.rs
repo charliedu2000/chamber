@@ -204,6 +204,10 @@ impl App {
 
     /// send msg in `input_buffer` to server
     fn send_msg(&mut self) -> std::io::Result<()> {
+        // do not send empty or blank string
+        if self.input_buffer.is_empty() || self.input_buffer.trim().is_empty() {
+            return Ok(());
+        }
         let msg_content: String = self.input_buffer.drain(..).collect();
         let msg = Message {
             msg_type: MessageType::TextMessage,
@@ -287,9 +291,12 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
             }
         }
     });
+
+    // draw ui in this loop
     loop {
         terminal.draw(|frame| ui(frame, &mut app))?;
 
+        // handle received msg
         if let Ok(msg) = msg_receiver.try_recv() {
             match msg.msg_type {
                 MessageType::ClientListUpdate => {}
