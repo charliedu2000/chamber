@@ -66,7 +66,7 @@ fn handle_client(mut client: WrappedStream, sender: Sender<Message>) -> std::io:
 }
 
 pub fn start() -> std::io::Result<()> {
-    let slant_font = figlet_rs::FIGfont::standand().unwrap();
+    let slant_font = figlet_rs::FIGfont::standard().unwrap();
     let figure = slant_font.convert("Chamber");
     assert!(figure.is_some());
     println!("{}", figure.unwrap());

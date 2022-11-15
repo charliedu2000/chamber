@@ -23,8 +23,6 @@
 
 ## 运行
 
-*自己的 Flag 刚立起来，还没打算提供二进制包。*
-
 需要 [Rust 开发环境](https://www.rust-lang.org/learn/get-started)。
 
 ```sh
